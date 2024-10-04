@@ -1,3 +1,4 @@
+# import libraries and packages
 import pandas as pd
 import re
 import plotly.express as px
@@ -7,30 +8,38 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 import streamlit as st
 from collections import Counter
-# from nltk import ngrams
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
+from streamlit_option_menu import option_menu
 
 
+# set streamlit config as wide
 st.set_page_config(
         page_title="Saucy (Home)",
         page_icon= "🔥",
         layout="wide"
     ) 
 
-selected = st.sidebar.selectbox("Insights waiting to be discovered", ["SAUCY", "More Insights", "Loading..."])
-st.sidebar.success("Select a Page above")
 
-if selected == "SAUCY":
+# Sidebar for navigation
+with st.sidebar:
+    app_pages = option_menu("Menu", ["Saucy", "More Insights", "coming soon..."], icons=["house", "bar-chart-line"], menu_icon="justify")
+    # st.sidebar.selectbox("Insights waiting to be discovered", ["SAUCY", "More Insights", "Loading..."])
+st.sidebar.caption("Select a Page above")
+
+
+# File uploader in the sidebar
+uploaded_file = st.sidebar.file_uploader("Upload Your Whatsapp Chat (zip files only!)", type="zip")
+st.sidebar.caption("Please be rest assured that we don't collect or process your data in anyway")
+
+if uploaded_file == None:
     st.title("Welcome to the Saucy chat Analyzer")
-
-    # Write to streamlit app
     st.image("saucy.jpeg")
-    st.header("Let's get to insighting!!!🤓🤓")
 
-    uploaded_file = st.sidebar.file_uploader("Upload Your Whatsapp Chat (zip files only!)", type="zip")
-    st.sidebar.caption("Please be rest assured that we don't collect or process your data in anyway")
+    st.warning("Please upload a chat file to proceed with the analysis")
+    st.caption("Use the upload button in the sidebar")
 
+if uploaded_file:
 
     m_start =  0
     m_end = 12
@@ -49,13 +58,8 @@ if selected == "SAUCY":
             return 'Evening'
         else:
             return 'Night'
-
-
-    # Process uploaded file
-    @st.cache_data
-    def full_processing(file):
-
-        with zipfile.ZipFile(file, 'r') as zip_ref:
+                
+    with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
             # Get a list of all files in the zip archive
             file_list = zip_ref.namelist()  
             # Find a .txt file
@@ -141,15 +145,15 @@ if selected == "SAUCY":
             # Extract year column
             df["year"] = df['datetime'].dt.isocalendar().year
             df["month"] = df['datetime'].dt.month_name()
-        
-        return df
-
-    if uploaded_file is not None:
-        df = full_processing(uploaded_file)
-        st.sidebar.success("File uploaded and processed successfully!")
 
 
-        df.drop(index=0, inplace=True)
+    if app_pages == "Saucy":
+        st.header("Let's get to insighting!!!🤓🤓")
+        index_to_drop = df.query("message.str.contains('Tap to learn more.') or message == 'null' or message == ''").index
+        df.drop(index=index_to_drop, inplace=True)
+        ice_breaker = df['sender'].iloc[0]
+        st.session_state.ice_breaker = ice_breaker
+
         years = list(set(df["year"]))
         years.sort()
         months = list(set(df['month']))
@@ -163,9 +167,8 @@ if selected == "SAUCY":
             st.markdown("Below is a sneak peek into the start of this saucy insight.🔥🔥")
             st.dataframe(df[["sender", "message", "datename"]].head())
             st.info(f"{df["sender"].iloc[0]} broke the ice on this chat")
-
         else:
-            st.warning("Nope, try again 🤭")
+            st.warning("Pick the correct answer to see the results! 😁")
 
         times = list(set(df['hour']))
         times.insert(0, "Choose...")
@@ -191,26 +194,31 @@ if selected == "SAUCY":
             st.markdown(f"1) {top_3[0]}hr")
             st.markdown(f"2) {top_3[1]}hr")
             st.markdown(f"3) and the {top_3[2]}hr")
+            category_count = df["time_category"].value_counts().reset_index().sort_values("count", ascending=False)
+            st.success(f"You mostly chat in the {category_count['time_category'].iloc[0]} ⚡")
         with  col2:
             fig = px.bar(hour_message_count, x='hour', y='count', title="Total Messages per Hour", labels={"count":"Total Messages", "hour":"Clock Hour", 'time_category':"Period of Day"}, template="plotly_dark", color='time_category')
             st.plotly_chart(fig)
             st.caption("Feel free to zoom-in, pan and download the chart above")
 
 
-        category_count = df["time_category"].value_counts().reset_index().sort_values("count", ascending=False)
-        st.success(f"You mostly chat in the {category_count['time_category'].iloc[0]} ⚡")
-
-        people = list(set(df["sender"].dropna()))
-        person_1 = people[0]
-        person_2 = people[1]
-        st.sidebar.radio("Pick your identity",[person_1, person_2])
+        
+        st.divider()
+        st.markdown("""
+                    <style> .centered-subheader {text-align: center; color:gwhite; font-size:25px; background-color:pink} </style>
+                    """, unsafe_allow_html=True)
+        st.markdown('<p class="centered-subheader">Below are the top 20 most used words of each user</p>', unsafe_allow_html=True)
+        people = sorted(list(set(df["sender"].dropna())))
+        if len(people) == 2:
+            person_1 = people[0]
+            person_2 = people[1]
+            st.sidebar.radio("Pick your identity",[person_1, person_2])
 
             # Remove non-alphanumeric characters from messages
         df['cleaned_message'] = df['message'].apply(lambda x: re.sub(r'[^a-zA-Z\s]', '', x))
 
         # Lowercase the messages for uniformity
         df['cleaned_message'] = df['cleaned_message'].str.lower().str.split()
-
 
         stop_words = ['very',
                     'our',
@@ -417,7 +425,7 @@ if selected == "SAUCY":
             word_count[sender] = pd.DataFrame(word_counts.items(), columns=['words', 'count']).sort_values(by='count', ascending=False)
 
             # Get the top 10 words
-            top_words = word_count[sender].nlargest(10, 'count')
+            top_words = word_count[sender].nlargest(20, 'count')
 
             # Generate the word cloud from the top words
             wordcloud = WordCloud(width=800, height=400, background_color='white').generate_from_frequencies(dict(zip(top_words['words'], top_words['count'])))
@@ -426,92 +434,96 @@ if selected == "SAUCY":
             fig, ax = plt.subplots(figsize=(4,2))
             ax.imshow(wordcloud, interpolation='bilinear')
             ax.axis('off')  # Turn off the axis
-            ax.set_title(f"Word Cloud for {sender}'s Messages", fontsize=16)
+            ax.set_title(f"{sender}'s most used words", fontsize=10)
             
             
             with columns[increment]:
                 increment += 1
                 # Display the plot in Streamlit
                 st.pyplot(fig)
+                st.caption("You can see the number of times each words above appear for each participant of this chat")
+                top_words.columns = ['Word', 'Number of appearance']
                 st.dataframe(top_words)
 
+        st.info("Navigate to the More Insights Page to get extra fresh and updated insights 😁😁📊")
+
+
+    elif app_pages == "More Insights":
+        st.header("Here's more Sauce!! 🥳") 
+        # st.sidebar.caption("Please be rest assured that we don't collect or process your data in any way")
+        people = list(set(df["sender"].dropna()))
+        ice_breaker = st.session_state.ice_breaker
+
+        if df is not None:
+
+            if len(people) < 2:
+                st.warning("This chat doesn't have enough participants for analysis. Please upload a chat with at least two participants.")
+            else:
+                sender_1, sender_2 = people[:2]
+
+                guess_media_sender = st.selectbox(f"Can you guess who sent the most media? 🤔🤔", ["Choose...", sender_1, sender_2])
+                st.write("and")
+                guess_ice_breaker = st.selectbox(f"Who broke the ice?", ["Choose...", sender_1, sender_2])
+                @st.cache_data
+                def media_sender(data, s1, s2):
+                    sender_1_df = data[data["sender"] == s1]
+                    sender_2_df = data[data["sender"] == s2]
+                    s1_total_media = sender_1_df['message'].str.count("<Media omitted>").sum()
+                    s2_total_media = sender_2_df['message'].str.count("<Media omitted>").sum()
+
+                    result_df = pd.DataFrame({
+                        "Names": [s1, s2],
+                        "Total Media": [s1_total_media, s2_total_media]
+                    })
+                    
+                    if s1_total_media > s2_total_media:
+                        winner = s1
+                    elif s1_total_media < s2_total_media:
+                        winner = s2
+                    else:
+                        winner = "It's a tie!"
+                    
+                    return result_df, winner
+                
+                result_df, winner = media_sender(df, sender_1, sender_2)
+
+                if guess_media_sender != "Choose...":
+                    if guess_media_sender == winner:
+                        st.success("Yay!!! You guessed correctly 🎉🎉")
+                    else:
+                        st.warning("Oops! Not quite right! 🤭")
+                    
+                    if winner != "It's a tie!":
+                        st.success(f"{winner} sent more media files in this chat")
+                    else:
+                        st.info("It's a tie! You both sent the same number of media 🤭🤭🤭")
+
+                    st.info(f"Lol, {ice_breaker} broke the ice on this entire chat")
+                    
+                    st.markdown("---")
+
+                    fig = px.bar(result_df, x='Total Media', y='Names', orientation='h', color="Names", 
+                                    title=f'Total Number of Media sent ({df["message"].str.count("<Media omitted>").sum()})')
+                    st.plotly_chart(fig)
+
+                else:
+                    st.info("Pick the correct answer to see the results! 😁")
+        else:
+            st.warning("No chat data available. Please upload a chat file on the 'Saucy' page first.")
+
+
+
+
+
+
+
+
+
+
+        
+        
+    
+
             
-        
-
-    else:
-        st.warning("Please upload a chat file to proceed with the analysis")
-        st.caption("Use the upload button in the sidebar")
-
-
-elif selected == "More Insights":
-    # Write to streamlit app
-    if st.session_state.df is not None:
-        df = st.session_state.df
-
-    st.header("Here's more Sauce!! 🥳") 
-    st.sidebar.caption("Please be rest assured that we don't collect or process your data in anyway")
     
-
-    people = list(set(df["sender"].dropna()))
-    if len(people) > 2:
-        people.remove(None)
-
-    sender_1 = people[0]
-    sender_2 = people[1]
-
-
-    guess_media_sender = st.selectbox(f"Can you guess who sent the most media? 🤔🤔", ["Choose...", sender_1, sender_2])
-
-    @st.cache_data
-    def media_sender(data):
-        sender_1_df = data.query("sender == @sender_1")
-        sender_2_df = data.query("sender == @sender_2")
-        s1_total_media = sender_1_df['message'].str.count("<Media omitted>").sum()
-        s2_total_media = sender_2_df['message'].str.count("<Media omitted>").sum()
-
-        result_df = pd.DataFrame([[sender_1, s1_total_media],[sender_2, s2_total_media]], columns=["Names", "Total Media"])
-        
-        if s1_total_media > s2_total_media:
-            winner = sender_1
-            # st.info(f"{sender_1} sent more media files than {sender_2}")
-        elif s1_total_media == s2_total_media:
-            winner = "Lol, it's tie"
-            # st.info(f"Rare!!!, but you both sent the same number of media 🤭🤭🤭")
-        else:
-            winner = sender_2
-            # st.info(f"{sender_2} sent more media files than {sender_1}")
-        return result_df, winner
     
-    result_df, winner = media_sender(df)
-
-    if guess_media_sender != "Choose...":
-        if guess_media_sender == winner:
-            st.success("Yay!!! You guessed correctly 🎉🎉")
-            st.success(f"{winner} sent more media files in this chat")
-        else:
-            st.warning("Hahahahhaha, wrong!!! 🤭🤭🤭🤭")
-            st.success(f"{winner} sent more media files in this chat")
-            st.markdown("---")
-
-        fig = px.bar(result_df, x='Total Media', y='Names', orientation='h', color="Names", title=f'Total Number of Media sent ({df['message'].str.count("<Media omitted>").sum()})')
-        st.plotly_chart(fig)
-    
-
-        
-
-
-    elif guess_media_sender == "Choose...":
-        st.info("Pick an answer 😁")
-    else:
-        st.info("Please upload the chat file using the Upload Button above.")
-
-
-
-
-
-
-
-
-
-
-
