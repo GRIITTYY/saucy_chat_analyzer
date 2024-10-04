@@ -407,7 +407,7 @@ if uploaded_file:
 
         # Initialize a dictionary to hold word counts for each sender
         word_count = {}
-        increment = 0
+        i = 0
         
         columns = st.columns(2)
 
@@ -437,8 +437,8 @@ if uploaded_file:
             ax.set_title(f"{sender}'s most used words", fontsize=10)
             
             
-            with columns[increment]:
-                increment += 1
+            with columns[i]:
+                i += 1
                 # Display the plot in Streamlit
                 st.pyplot(fig)
                 st.caption("You can see the number of times each words above appear for each participant of this chat")
